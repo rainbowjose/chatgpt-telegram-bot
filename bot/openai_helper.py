@@ -27,8 +27,8 @@ GPT_4_VISION_MODELS = ("gpt-4o",)
 GPT_4_128K_MODELS = ("gpt-4-1106-preview", "gpt-4-0125-preview", "gpt-4-turbo-preview", "gpt-4-turbo", "gpt-4-turbo-2024-04-09", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4.5", "gpt-4.5-turbo")
 GPT_4O_MODELS = ("gpt-4o", "gpt-4o-mini", "chatgpt-4o-latest")
 O_MODELS = ("o1", "o1-mini", "o1-preview", "o3", "o3-mini")
-GPT_5_MODELS = ("gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-2025-08-07", "gpt-5-chat-latest", "gpt-5-pro", "gpt-5.1", "gpt-5.1-chat-latest")
-GPT_5_CODEX_MODELS = ("gpt-5-codex", "gpt-5.1-codex", "gpt-5.1-codex-mini")
+GPT_5_MODELS = ("gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-2025-08-07", "gpt-5-chat-latest", "gpt-5-pro", "gpt-5.1", "gpt-5.1-chat-latest", "gpt-5.2", "gpt-5.2-pro", "gpt-5.2-chat-latest")
+GPT_5_CODEX_MODELS = ("gpt-5-codex", "gpt-5.1-codex", "gpt-5.1-codex-mini", "gpt-5.1-codex-max")
 GPT_ALL_MODELS = GPT_3_MODELS + GPT_3_16K_MODELS + GPT_4_MODELS + GPT_4_32K_MODELS + GPT_4_VISION_MODELS + GPT_4_128K_MODELS + GPT_4O_MODELS + O_MODELS + GPT_5_MODELS + GPT_5_CODEX_MODELS
 
 def default_max_tokens(model: str) -> int:
@@ -256,6 +256,12 @@ class OpenAIHelper:
                 'frequency_penalty': self.config['frequency_penalty'],
                 'stream': stream
             }
+
+            if self.config['model'] in GPT_5_MODELS or self.config['model'] in GPT_5_CODEX_MODELS:
+                if self.config['reasoning_effort'] != 'none':
+                    common_args['reasoning'] = {'effort': self.config['reasoning_effort']}
+                if self.config['verbosity'] != 'medium':
+                     common_args['text'] = {'verbosity': self.config['verbosity']}
 
             if self.config['enable_functions'] and not self.conversations_vision[chat_id]:
                 functions = self.plugin_manager.get_functions_specs()
@@ -644,6 +650,8 @@ class OpenAIHelper:
             else:
                 return 65_536
         if model in GPT_5_MODELS or model in GPT_5_CODEX_MODELS:
+            if "gpt-5.2" in model or "gpt-5.1-codex-max" in model:
+                return 400_000
             return 200_000  # GPT-5 models support 200k context window
         raise NotImplementedError(f"Max tokens for model {model} is not implemented yet.")
 
