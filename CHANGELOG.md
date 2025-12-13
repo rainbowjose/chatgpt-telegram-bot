@@ -6,6 +6,12 @@
 *   **True Streaming**: Implemented real-time token-by-token streaming for GPT-5 models, replacing the previous buffering behavior.
 *   **Thinking Status**: Added visual "🤔 Thinking..." status for models with extended reasoning phases (like `gpt-5.2-pro`). The bot now indicates when it is reasoning, even if the API is silent.
 *   **Robust Content Extraction**: Improved parsing logic to handle deeply nested response structures and object representations from the `Responses` API.
+*   **Configurable Tool Support**: Added `.env` configuration for OpenAI tools:
+    *   **Web Search**: `ENABLE_WEB_SEARCH`
+    *   **File Search**: `ENABLE_FILE_SEARCH` (with `FILE_SEARCH_VECTOR_STORE_IDS`)
+    *   **Code Interpreter**: `ENABLE_CODE_INTERPRETER`
+    *   **Computer Use**: `ENABLE_COMPUTER_USE`
+    *   **MCP**: Support for connecting to external Model Context Protocol servers via `ENABLE_MCP`.
 
 ### Technical Details
 *   Updated `bot/openai_helper.py` to use `client.responses.create` with `stream=True`.
