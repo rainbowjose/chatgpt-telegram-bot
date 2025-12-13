@@ -107,6 +107,7 @@ class OpenAIHelper:
         :param config: A dictionary containing the GPT configuration
         :param plugin_manager: The plugin manager
         """
+        print("DEBUG: OpenAIHelper initialized with NEW CODE", flush=True)
         http_client = httpx.AsyncClient(proxy=config['proxy']) if 'proxy' in config else None
         self.client = openai.AsyncOpenAI(api_key=config['api_key'], http_client=http_client)
         self.config = config
@@ -132,6 +133,7 @@ class OpenAIHelper:
         :param query: The query to send to the model
         :return: The answer from the model and the number of tokens used
         """
+        print(f"DEBUG: get_chat_response called for {chat_id}", flush=True)
         plugins_used = ()
         response = await self.__common_get_chat_response(chat_id, query)
         if self.config['enable_functions'] and not self.conversations_vision[chat_id]:
@@ -175,6 +177,7 @@ class OpenAIHelper:
         :param query: The query to send to the model
         :return: The answer from the model and the number of tokens used, or 'not_finished'
         """
+        print(f"DEBUG: get_chat_response_stream called for {chat_id}", flush=True)
         plugins_used = ()
         response = await self.__common_get_chat_response(chat_id, query, stream=True)
         if self.config['enable_functions'] and not self.conversations_vision[chat_id]:
@@ -226,7 +229,7 @@ class OpenAIHelper:
         """
         bot_language = self.config['bot_language']
         try:
-            logging.info(f"DEBUG: __common_get_chat_response called with model: {self.config['model']}")
+            print(f"DEBUG: __common_get_chat_response called with model: {self.config['model']}", flush=True)
             if chat_id not in self.conversations or self.__max_age_reached(chat_id):
                 self.reset_chat_history(chat_id)
 
