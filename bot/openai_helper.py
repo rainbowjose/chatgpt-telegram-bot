@@ -283,6 +283,33 @@ class OpenAIHelper:
                     text=text_args if text_args else openai.NotGiven()
                 )
                 
+                if stream:
+                    class Delta:
+                        def __init__(self, role=None, content=None):
+                            self.role = role
+                            self.content = content
+                            self.function_call = None
+
+                    class StreamChoice:
+                        def __init__(self, delta, finish_reason=None):
+                            self.delta = delta
+                            self.finish_reason = finish_reason
+
+                    class StreamChunk:
+                        def __init__(self, choices):
+                            self.choices = choices
+
+                    async def stream_generator():
+                        # Yield initial chunk with role to satisfy __handle_function_call consumption
+                        yield StreamChunk([StreamChoice(Delta(role='assistant', content=''))])
+                        # Yield content chunk
+                        if response.output:
+                            yield StreamChunk([StreamChoice(Delta(content=response.output))])
+                        # Yield finish chunk
+                        yield StreamChunk([StreamChoice(Delta(), finish_reason='stop')])
+
+                    return stream_generator()
+
                 # Wrap response to match ChatCompletion interface
                 class Message:
                     def __init__(self, content):
