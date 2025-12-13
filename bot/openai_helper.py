@@ -305,34 +305,51 @@ class OpenAIHelper:
                         # Yield content chunk
                         if response.output:
                             content = response.output
-                            is_iterable = hasattr(content, '__iter__') and not isinstance(content, (str, bytes, bytearray))
-                            if is_iterable:
+                            try:
+                                # Attempt to iterate over content to extract text
                                 text_parts = []
-                                for item in content:
-                                    val = None
-                                    # Try attribute access
-                                    if hasattr(item, 'text'):
-                                        val = item.text
-                                    elif hasattr(item, 'content'):
-                                        val = item.content
-                                    # Try dict access
-                                    elif hasattr(item, 'get'):
-                                        val = item.get('text') or item.get('content')
+                                # Ensure we don't iterate over a string
+                                if isinstance(content, (str, bytes, bytearray)):
+                                    raise TypeError("Content is string-like, treating as single item")
+
+                                for message in content:
+                                    # message is the Message object
+                                    # Check if message has a content list (as per Responses API)
+                                    message_content = getattr(message, 'content', None)
                                     
-                                    if val:
-                                        text_parts.append(str(val))
+                                    if message_content and hasattr(message_content, '__iter__') and not isinstance(message_content, (str, bytes, bytearray)):
+                                        # Iterate over the inner content list
+                                        for part in message_content:
+                                            val = None
+                                            if hasattr(part, 'text'):
+                                                val = part.text
+                                            elif hasattr(part, 'content'):
+                                                val = part.content
+                                            elif hasattr(part, 'get'):
+                                                val = part.get('text') or part.get('content')
+                                            
+                                            if val:
+                                                text_parts.append(str(val))
+                                    # Fallback: if message itself has text (flattened structure or legacy)
+                                    elif hasattr(message, 'text'):
+                                        text_parts.append(str(message.text))
                                     else:
-                                        # Fallback: regex search in str(item)
-                                        s = str(item)
+                                        # Fallback: try to convert the message/part itself to string and regex
+                                        # This handles cases where we might still have a raw object or unexpected structure
+                                        s = str(message)
                                         import re
                                         match = re.search(r"text='(.*?)'", s, re.DOTALL)
                                         if match:
                                             text_parts.append(match.group(1).replace("\\n", "\n").replace("\\'", "'"))
                                         else:
-                                            text_parts.append(s)
-                                            logging.warning(f"Failed to extract text from item: {s}, type: {type(item)}")
+                                            # Avoid logging warning for empty/system messages without text
+                                            pass
 
                                 content = "".join(text_parts)
+                            except TypeError:
+                                # Not iterable or is string, leave content as is (or it's already a string repr)
+                                logging.debug(f"Content not iterable or string: {type(content)}")
+                                pass
                             yield StreamChunk([StreamChoice(Delta(content=content))])
                         # Yield finish chunk
                         yield StreamChunk([StreamChoice(Delta(), finish_reason='stop')])
@@ -362,33 +379,49 @@ class OpenAIHelper:
 
                 # Assuming response.output contains the text
                 content = response.output
-                is_iterable = hasattr(content, '__iter__') and not isinstance(content, (str, bytes, bytearray))
-                if is_iterable:
+                try:
+                    # Attempt to iterate over content to extract text
                     text_parts = []
-                    for item in content:
-                        val = None
-                        # Try attribute access
-                        if hasattr(item, 'text'):
-                            val = item.text
-                        elif hasattr(item, 'content'):
-                            val = item.content
-                        # Try dict access
-                        elif hasattr(item, 'get'):
-                            val = item.get('text') or item.get('content')
-                                    
-                        if val:
-                            text_parts.append(str(val))
+                    # Ensure we don't iterate over a string
+                    if isinstance(content, (str, bytes, bytearray)):
+                        raise TypeError("Content is string-like, treating as single item")
+
+                    for message in content:
+                        # message is the Message object
+                        # Check if message has a content list (as per Responses API)
+                        message_content = getattr(message, 'content', None)
+                        
+                        if message_content and hasattr(message_content, '__iter__') and not isinstance(message_content, (str, bytes, bytearray)):
+                            # Iterate over the inner content list
+                            for part in message_content:
+                                val = None
+                                if hasattr(part, 'text'):
+                                    val = part.text
+                                elif hasattr(part, 'content'):
+                                    val = part.content
+                                elif hasattr(part, 'get'):
+                                    val = part.get('text') or part.get('content')
+                                
+                                if val:
+                                    text_parts.append(str(val))
+                        # Fallback: if message itself has text
+                        elif hasattr(message, 'text'):
+                            text_parts.append(str(message.text))
                         else:
-                            # Fallback: regex search in str(item)
-                            s = str(item)
+                            # Fallback: regex search
+                            s = str(message)
                             import re
                             match = re.search(r"text='(.*?)'", s, re.DOTALL)
                             if match:
                                 text_parts.append(match.group(1).replace("\\n", "\n").replace("\\'", "'"))
                             else:
-                                text_parts.append(s)
-                                logging.warning(f"Failed to extract text from item: {s}, type: {type(item)}")
+                                pass
+
                     content = "".join(text_parts)
+                except TypeError:
+                    # Not iterable or is string, leave content as is
+                    logging.debug(f"Content not iterable or string: {type(content)}")
+                    pass
                 return ChatCompletion(content)
 
             # Legacy Chat Completion API for other models
