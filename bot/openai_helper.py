@@ -304,7 +304,10 @@ class OpenAIHelper:
                         yield StreamChunk([StreamChoice(Delta(role='assistant', content=''))])
                         # Yield content chunk
                         if response.output:
-                            yield StreamChunk([StreamChoice(Delta(content=response.output))])
+                            content = response.output
+                            if isinstance(content, list):
+                                content = "".join([str(item) for item in content])
+                            yield StreamChunk([StreamChoice(Delta(content=content))])
                         # Yield finish chunk
                         yield StreamChunk([StreamChoice(Delta(), finish_reason='stop')])
 
@@ -332,7 +335,10 @@ class OpenAIHelper:
                         self.usage = Usage()
 
                 # Assuming response.output contains the text
-                return ChatCompletion(response.output)
+                content = response.output
+                if isinstance(content, list):
+                    content = "".join([str(item) for item in content])
+                return ChatCompletion(content)
 
             # Legacy Chat Completion API for other models
                 functions = self.plugin_manager.get_functions_specs()
