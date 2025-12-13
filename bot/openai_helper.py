@@ -107,7 +107,6 @@ class OpenAIHelper:
         :param config: A dictionary containing the GPT configuration
         :param plugin_manager: The plugin manager
         """
-        print("DEBUG: OpenAIHelper initialized with NEW CODE", flush=True)
         http_client = httpx.AsyncClient(proxy=config['proxy']) if 'proxy' in config else None
         self.client = openai.AsyncOpenAI(api_key=config['api_key'], http_client=http_client)
         self.config = config
@@ -133,7 +132,6 @@ class OpenAIHelper:
         :param query: The query to send to the model
         :return: The answer from the model and the number of tokens used
         """
-        print(f"DEBUG: get_chat_response called for {chat_id}", flush=True)
         plugins_used = ()
         response = await self.__common_get_chat_response(chat_id, query)
         if self.config['enable_functions'] and not self.conversations_vision[chat_id]:
@@ -177,7 +175,6 @@ class OpenAIHelper:
         :param query: The query to send to the model
         :return: The answer from the model and the number of tokens used, or 'not_finished'
         """
-        print(f"DEBUG: get_chat_response_stream called for {chat_id}", flush=True)
         plugins_used = ()
         response = await self.__common_get_chat_response(chat_id, query, stream=True)
         if self.config['enable_functions'] and not self.conversations_vision[chat_id]:
@@ -229,7 +226,6 @@ class OpenAIHelper:
         """
         bot_language = self.config['bot_language']
         try:
-            print(f"DEBUG: __common_get_chat_response called with model: {self.config['model']}", flush=True)
             if chat_id not in self.conversations or self.__max_age_reached(chat_id):
                 self.reset_chat_history(chat_id)
 
@@ -286,13 +282,48 @@ class OpenAIHelper:
                     text_args['verbosity'] = self.config['verbosity']
 
                 tools_args = {}
-                logging.info(f"DEBUG: Current Model: {self.config['model']}")
-                if self.config['model'] == 'gpt-5.2-pro':
-                    tools_args['tools'] = [{"type": "web_search"}]
-                    tools_args['include'] = ["web_search_call.action.sources"]
-                    logging.info("DEBUG: Web search tools enabled for gpt-5.2-pro")
-                else:
-                    logging.info("DEBUG: Web search tools NOT enabled")
+                tools = []
+                include = []
+
+                if self.config.get('enable_web_search'):
+                    tools.append({"type": "web_search"})
+                    include.append("web_search_call.action.sources")
+
+                if self.config.get('enable_file_search'):
+                    vector_store_ids = [id.strip() for id in self.config.get('file_search_vector_store_ids', '').split(',') if id.strip()]
+                    if vector_store_ids:
+                        tools.append({
+                            "type": "file_search",
+                            "file_search": {
+                                "vector_store_ids": vector_store_ids
+                            }
+                        })
+                        include.append("file_search_call.results")
+
+                if self.config.get('enable_code_interpreter'):
+                    tools.append({"type": "code_interpreter"})
+                    include.append("code_interpreter_call.outputs")
+
+                if self.config.get('enable_computer_use'):
+                    tools.append({"type": "computer_use"})
+                    include.append("computer_call_output.output.image_url")
+
+                if self.config.get('enable_mcp'):
+                    mcp_tool = {
+                        "type": "mcp",
+                        "server_label": self.config.get('mcp_server_label'),
+                        "server_url": self.config.get('mcp_server_url'),
+                        "server_description": self.config.get('mcp_server_description', 'MCP Server'),
+                        "require_approval": "never" 
+                    }
+                    if mcp_tool["server_url"]: # Valid URL check ideally
+                         tools.append(mcp_tool)
+
+                if tools:
+                    tools_args['tools'] = tools
+                
+                if include:
+                    tools_args['include'] = include
 
                 stream_request = stream
 
