@@ -27,8 +27,8 @@ GPT_4_VISION_MODELS = ("gpt-4o",)
 GPT_4_128K_MODELS = ("gpt-4-1106-preview", "gpt-4-0125-preview", "gpt-4-turbo-preview", "gpt-4-turbo", "gpt-4-turbo-2024-04-09", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4.5", "gpt-4.5-turbo")
 GPT_4O_MODELS = ("gpt-4o", "gpt-4o-mini", "chatgpt-4o-latest")
 O_MODELS = ("o1", "o1-mini", "o1-preview", "o3", "o3-mini")
-GPT_5_MODELS = ("gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-2025-08-07", "gpt-5-chat-latest", "gpt-5-pro", "gpt-5.1", "gpt-5.1-chat-latest", "gpt-5.2", "gpt-5.2-pro", "gpt-5.2-chat-latest")
-GPT_5_CODEX_MODELS = ("gpt-5-codex", "gpt-5.1-codex", "gpt-5.1-codex-mini", "gpt-5.1-codex-max")
+GPT_5_MODELS = ("gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-2025-08-07", "gpt-5-chat-latest", "gpt-5-pro", "gpt-5.1", "gpt-5.1-chat-latest")
+GPT_5_CODEX_MODELS = ("gpt-5-codex", "gpt-5.1-codex", "gpt-5.1-codex-mini")
 GPT_ALL_MODELS = GPT_3_MODELS + GPT_3_16K_MODELS + GPT_4_MODELS + GPT_4_32K_MODELS + GPT_4_VISION_MODELS + GPT_4_128K_MODELS + GPT_4O_MODELS + O_MODELS + GPT_5_MODELS + GPT_5_CODEX_MODELS
 
 def default_max_tokens(model: str) -> int:
@@ -188,11 +188,6 @@ class OpenAIHelper:
             if len(chunk.choices) == 0:
                 continue
             delta = chunk.choices[0].delta
-            # Check for reasoning status
-            if getattr(delta, 'type', None) == 'reasoning':
-                yield "🤔 Thinking...", 'not_finished'
-                continue
-
             if delta.content:
                 answer += delta.content
                 yield answer, 'not_finished'
@@ -262,157 +257,7 @@ class OpenAIHelper:
                 'stream': stream
             }
 
-            if self.config['model'] in GPT_5_MODELS or self.config['model'] in GPT_5_CODEX_MODELS:
-                # Use the new Responses API
-                prompt = ""
-                for msg in self.conversations[chat_id]:
-                    role = msg['role']
-                    content = msg['content']
-                    if role == 'function':
-                        continue # Skip function outputs for now in text prompt
-                    prompt += f"{role.capitalize()}: {content}\n\n"
-                prompt += "Assistant: "
-
-                reasoning_args = {}
-                if self.config['reasoning_effort'] != 'none':
-                    reasoning_args['effort'] = self.config['reasoning_effort']
-                
-                text_args = {}
-                if self.config['verbosity'] != 'medium':
-                    text_args['verbosity'] = self.config['verbosity']
-
-                stream_request = stream
-
-                if stream_request:
-                    response_stream = await self.client.responses.create(
-                        model=self.config['model'],
-                        input=prompt,
-                        reasoning=reasoning_args if reasoning_args else openai.NotGiven(),
-                        text=text_args if text_args else openai.NotGiven(),
-                        stream=True
-                    )
-
-                    class Delta:
-                        def __init__(self, role=None, content=None, type=None):
-                            self.role = role
-                            self.content = content
-                            self.function_call = None
-                            self.type = type
-
-                    class StreamChoice:
-                        def __init__(self, delta, finish_reason=None):
-                            self.delta = delta
-                            self.finish_reason = finish_reason
-
-                    class StreamChunk:
-                        def __init__(self, choices):
-                            self.choices = choices
-
-                    async def stream_generator():
-                        # Yield initial chunk with role to satisfy __handle_function_call consumption
-                        yield StreamChunk([StreamChoice(Delta(role='assistant', content=''))])
-                        
-                        reasoning_started = False
-                        async for event in response_stream:
-                            if event.type == 'response.output_text.delta':
-                                # event.delta is the text content
-                                content = event.delta
-                                yield StreamChunk([StreamChoice(Delta(content=content))])
-                            elif (event.type == 'response.reasoning_text.delta' or event.type == 'response.in_progress') and not reasoning_started:
-                                # Signal reasoning start (or just general processing start to cover silent reasoning)
-                                yield StreamChunk([StreamChoice(Delta(type='reasoning'))])
-                                reasoning_started = True
-                            elif event.type == 'response.output_text.done':
-                                # Text generation finished for an item
-                                pass
-                            # We can ignore other events like response.created, etc. for now
-
-                        # Yield finish chunk
-                        yield StreamChunk([StreamChoice(Delta(), finish_reason='stop')])
-
-                    return stream_generator()
-                
-                # Non-streaming request
-                response = await self.client.responses.create(
-                    model=self.config['model'],
-                    input=prompt,
-                    reasoning=reasoning_args if reasoning_args else openai.NotGiven(),
-                    text=text_args if text_args else openai.NotGiven(),
-                    stream=False
-                )
-
-                # Wrap response to match ChatCompletion interface
-                class Message:
-                    def __init__(self, content):
-                        self.content = content
-                        self.function_call = None
-
-                class Choice:
-                    def __init__(self, message):
-                        self.message = message
-
-                class Usage:
-                    def __init__(self, usage_data=None):
-                        self.total_tokens = usage_data.total_tokens if usage_data else 0
-                        self.prompt_tokens = usage_data.input_tokens if usage_data else 0
-                        self.completion_tokens = usage_data.output_tokens if usage_data else 0
-
-                class ChatCompletion:
-                    def __init__(self, content, usage=None):
-                        self.choices = [Choice(Message(content))]
-                        self.usage = usage if usage else Usage()
-
-                # Assuming response.output contains the text
-                content = response.output
-                try:
-                    # Attempt to iterate over content to extract text
-                    text_parts = []
-                    # Ensure we don't iterate over a string
-                    if isinstance(content, (str, bytes, bytearray)):
-                        raise TypeError("Content is string-like, treating as single item")
-
-                    for message in content:
-                        # message is the Message object
-                        # Check if message has a content list (as per Responses API)
-                        message_content = getattr(message, 'content', None)
-                        
-                        if message_content and hasattr(message_content, '__iter__') and not isinstance(message_content, (str, bytes, bytearray)):
-                            # Iterate over the inner content list
-                            for part in message_content:
-                                val = None
-                                if hasattr(part, 'text'):
-                                    val = part.text
-                                elif hasattr(part, 'content'):
-                                    val = part.content
-                                elif hasattr(part, 'get'):
-                                    val = part.get('text') or part.get('content')
-                                
-                                if val:
-                                    text_parts.append(str(val))
-                        # Fallback: if message itself has text
-                        elif hasattr(message, 'text'):
-                            text_parts.append(str(message.text))
-                        else:
-                            # Fallback: regex search
-                            s = str(message)
-                            import re
-                            match = re.search(r"text='(.*?)'", s, re.DOTALL)
-                            if match:
-                                text_parts.append(match.group(1).replace("\\n", "\n").replace("\\'", "'"))
-                            else:
-                                pass
-
-                    content = "".join(text_parts)
-                except TypeError:
-                    # Not iterable or is string, leave content as is
-                    logging.debug(f"Content not iterable or string: {type(content)}")
-                    pass
-                
-                # Create usage object from response
-                usage_obj = Usage(response.usage)
-                return ChatCompletion(content, usage=usage_obj)
-
-            # Legacy Chat Completion API for other models
+            if self.config['enable_functions'] and not self.conversations_vision[chat_id]:
                 functions = self.plugin_manager.get_functions_specs()
                 if len(functions) > 0:
                     common_args['functions'] = self.plugin_manager.get_functions_specs()
@@ -799,8 +644,6 @@ class OpenAIHelper:
             else:
                 return 65_536
         if model in GPT_5_MODELS or model in GPT_5_CODEX_MODELS:
-            if "gpt-5.2" in model or "gpt-5.1-codex-max" in model:
-                return 400_000
             return 200_000  # GPT-5 models support 200k context window
         raise NotImplementedError(f"Max tokens for model {model} is not implemented yet.")
 

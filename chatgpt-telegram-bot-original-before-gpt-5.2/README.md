@@ -42,7 +42,6 @@ A [Telegram bot](https://core.telegram.org/bots/api) that integrates with OpenAI
 - [x] (NEW!) Vision support [announced on November 6, 2023](https://platform.openai.com/docs/guides/vision) - by [@gilcu3](https://github.com/gilcu3)
 - [x] (NEW!) GPT-4o model support [announced on May 12, 2024](https://openai.com/index/hello-gpt-4o/) - by [@err09r](https://github.com/err09r)
 - [x] (NEW!) o1 and o1-mini model preliminary support
-- [x] (NEW!) **GPT-5.2 & GPT-5.2-Pro support** with real-time streaming and "Thinking..." status for reasoning models.
 
 ## Additional features - help needed!
 If you'd like to help, check out the [issues](https://github.com/n3d1117/chatgpt-telegram-bot/issues) section and contribute!  
