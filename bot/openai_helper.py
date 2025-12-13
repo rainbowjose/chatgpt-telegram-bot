@@ -282,9 +282,13 @@ class OpenAIHelper:
                     text_args['verbosity'] = self.config['verbosity']
 
                 tools_args = {}
+                logging.info(f"DEBUG: Current Model: {self.config['model']}")
                 if self.config['model'] == 'gpt-5.2-pro':
                     tools_args['tools'] = [{"type": "web_search"}]
                     tools_args['include'] = ["web_search_call.action.sources"]
+                    logging.info("DEBUG: Web search tools enabled for gpt-5.2-pro")
+                else:
+                    logging.info("DEBUG: Web search tools NOT enabled")
 
                 stream_request = stream
 
