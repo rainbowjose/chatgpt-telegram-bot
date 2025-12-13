@@ -1,7 +1,8 @@
 
-## Changelog (GPT-5 Fork)
+## Changelog
 
-### Features
+### [1.1.0] - 2025-12-14
+#### Features
 *   **GPT-5 Support**: Full compatibility with OpenAI's `gpt-5.1` and `gpt-5.2-pro` models using the new `client.responses.create` API.
 *   **True Streaming**: Implemented real-time token-by-token streaming for GPT-5 models, replacing the previous buffering behavior.
 *   **Thinking Status**: Added visual "🤔 Thinking..." status for models with extended reasoning phases (like `gpt-5.2-pro`). The bot now indicates when it is reasoning, even if the API is silent.
