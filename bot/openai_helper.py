@@ -306,7 +306,13 @@ class OpenAIHelper:
                         if response.output:
                             content = response.output
                             if isinstance(content, list):
-                                content = "".join([str(item) for item in content])
+                                text_parts = []
+                                for item in content:
+                                    if hasattr(item, 'content'):
+                                        text_parts.append(str(item.content))
+                                    else:
+                                        text_parts.append(str(item))
+                                content = "".join(text_parts)
                             yield StreamChunk([StreamChoice(Delta(content=content))])
                         # Yield finish chunk
                         yield StreamChunk([StreamChoice(Delta(), finish_reason='stop')])
@@ -337,7 +343,13 @@ class OpenAIHelper:
                 # Assuming response.output contains the text
                 content = response.output
                 if isinstance(content, list):
-                    content = "".join([str(item) for item in content])
+                    text_parts = []
+                    for item in content:
+                        if hasattr(item, 'content'):
+                            text_parts.append(str(item.content))
+                        else:
+                            text_parts.append(str(item))
+                    content = "".join(text_parts)
                 return ChatCompletion(content)
 
             # Legacy Chat Completion API for other models
