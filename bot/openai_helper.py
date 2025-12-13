@@ -258,12 +258,56 @@ class OpenAIHelper:
             }
 
             if self.config['model'] in GPT_5_MODELS or self.config['model'] in GPT_5_CODEX_MODELS:
-                if self.config['reasoning_effort'] != 'none':
-                    common_args['reasoning'] = {'effort': self.config['reasoning_effort']}
-                if self.config['verbosity'] != 'medium':
-                     common_args['text'] = {'verbosity': self.config['verbosity']}
+                # Use the new Responses API
+                prompt = ""
+                for msg in self.conversations[chat_id]:
+                    role = msg['role']
+                    content = msg['content']
+                    if role == 'function':
+                        continue # Skip function outputs for now in text prompt
+                    prompt += f"{role.capitalize()}: {content}\n\n"
+                prompt += "Assistant: "
 
-            if self.config['enable_functions'] and not self.conversations_vision[chat_id]:
+                reasoning_args = {}
+                if self.config['reasoning_effort'] != 'none':
+                    reasoning_args['effort'] = self.config['reasoning_effort']
+                
+                text_args = {}
+                if self.config['verbosity'] != 'medium':
+                    text_args['verbosity'] = self.config['verbosity']
+
+                response = await self.client.responses.create(
+                    model=self.config['model'],
+                    input=prompt,
+                    reasoning=reasoning_args if reasoning_args else openai.NotGiven(),
+                    text=text_args if text_args else openai.NotGiven()
+                )
+                
+                # Wrap response to match ChatCompletion interface
+                class Message:
+                    def __init__(self, content):
+                        self.content = content
+                        self.function_call = None
+
+                class Choice:
+                    def __init__(self, message):
+                        self.message = message
+
+                class Usage:
+                    def __init__(self):
+                        self.total_tokens = 0
+                        self.prompt_tokens = 0
+                        self.completion_tokens = 0
+
+                class ChatCompletion:
+                    def __init__(self, content):
+                        self.choices = [Choice(Message(content))]
+                        self.usage = Usage()
+
+                # Assuming response.output contains the text
+                return ChatCompletion(response.output)
+
+            # Legacy Chat Completion API for other models
                 functions = self.plugin_manager.get_functions_specs()
                 if len(functions) > 0:
                     common_args['functions'] = self.plugin_manager.get_functions_specs()
