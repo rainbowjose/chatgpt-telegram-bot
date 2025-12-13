@@ -308,8 +308,19 @@ class OpenAIHelper:
                             if isinstance(content, list):
                                 text_parts = []
                                 for item in content:
-                                    if hasattr(item, 'content'):
+                                    if hasattr(item, 'text'):
+                                        text_parts.append(str(item.text))
+                                    elif hasattr(item, 'content'):
                                         text_parts.append(str(item.content))
+                                    elif isinstance(item, list):
+                                        # Handle nested list if that's the case
+                                        for subitem in item:
+                                             if hasattr(subitem, 'text'):
+                                                 text_parts.append(str(subitem.text))
+                                             elif hasattr(subitem, 'content'):
+                                                 text_parts.append(str(subitem.content))
+                                             else:
+                                                 text_parts.append(str(subitem))
                                     else:
                                         text_parts.append(str(item))
                                 content = "".join(text_parts)
@@ -345,8 +356,19 @@ class OpenAIHelper:
                 if isinstance(content, list):
                     text_parts = []
                     for item in content:
-                        if hasattr(item, 'content'):
+                        if hasattr(item, 'text'):
+                            text_parts.append(str(item.text))
+                        elif hasattr(item, 'content'):
                             text_parts.append(str(item.content))
+                        elif isinstance(item, list):
+                            # Handle nested list if that's the case
+                            for subitem in item:
+                                    if hasattr(subitem, 'text'):
+                                        text_parts.append(str(subitem.text))
+                                    elif hasattr(subitem, 'content'):
+                                        text_parts.append(str(subitem.content))
+                                    else:
+                                        text_parts.append(str(subitem))
                         else:
                             text_parts.append(str(item))
                     content = "".join(text_parts)
