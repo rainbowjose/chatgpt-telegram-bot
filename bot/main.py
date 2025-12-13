@@ -14,14 +14,22 @@ def main():
 
     def get_env(key, default=None, parser=None):
         value = os.environ.get(key, default)
-        if parser and value is not None:
-            try:
-                return parser(value)
-            except ValueError:
-                logging.warning(f"Invalid value for {key}: '{value}'. Using default: {default}")
-                return default if default is not None else parser(default) # Fallback to default if provided, else re-parse default (if capable) or just return default. Actually simpler: return default.
+        if parser:
+            if value is not None:
+                try:
+                    return parser(value)
+                except ValueError:
+                    logging.warning(f"Invalid value for {key}: '{value}'. Using default: {default}")
+                    return default
+            else:
                 return default
         return value
+
+    def parse_float_list(value):
+        if isinstance(value, list):
+            return value
+        return [float(i) for i in value.split(",")]
+
 
 
     # Setup logging
@@ -107,7 +115,7 @@ def main():
         'enable_tts_generation': get_env('ENABLE_TTS_GENERATION', 'true').lower() == 'true',
         'budget_period': get_env('BUDGET_PERIOD', 'monthly').lower(),
         'user_budgets': get_env('USER_BUDGETS', get_env('MONTHLY_USER_BUDGETS', '*')),
-        'guest_budget': float(get_env('GUEST_BUDGET', get_env('MONTHLY_GUEST_BUDGET', '100.0'))),
+        'guest_budget': get_env('GUEST_BUDGET', get_env('MONTHLY_GUEST_BUDGET', 100.0, float), float),
         'stream': get_env('STREAM', 'true').lower() == 'true',
         'proxy': get_env('PROXY', None) or get_env('TELEGRAM_PROXY', None),
         'voice_reply_transcript': get_env('VOICE_REPLY_WITH_TRANSCRIPT_ONLY', 'false').lower() == 'true',
@@ -115,13 +123,13 @@ def main():
         'ignore_group_transcriptions': get_env('IGNORE_GROUP_TRANSCRIPTIONS', 'true').lower() == 'true',
         'ignore_group_vision': get_env('IGNORE_GROUP_VISION', 'true').lower() == 'true',
         'group_trigger_keyword': get_env('GROUP_TRIGGER_KEYWORD', ''),
-        'token_price': float(get_env('TOKEN_PRICE', 0.002)),
-        'image_prices': [float(i) for i in get_env('IMAGE_PRICES', "0.016,0.018,0.02").split(",")],
-        'vision_token_price': float(get_env('VISION_TOKEN_PRICE', 0.01)),
+        'token_price': get_env('TOKEN_PRICE', 0.002, float),
+        'image_prices': get_env('IMAGE_PRICES', [0.016, 0.018, 0.02], parse_float_list),
+        'vision_token_price': get_env('VISION_TOKEN_PRICE', 0.01, float),
         'image_receive_mode': get_env('IMAGE_FORMAT', "photo"),
         'tts_model': get_env('TTS_MODEL', 'tts-1'),
-        'tts_prices': [float(i) for i in get_env('TTS_PRICES', "0.015,0.030").split(",")],
-        'transcription_price': float(get_env('TRANSCRIPTION_PRICE', 0.006)),
+        'tts_prices': get_env('TTS_PRICES', [0.015, 0.030], parse_float_list),
+        'transcription_price': get_env('TRANSCRIPTION_PRICE', 0.006, float),
         'bot_language': get_env('BOT_LANGUAGE', 'en'),
     }
 
