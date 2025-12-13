@@ -226,6 +226,7 @@ class OpenAIHelper:
         """
         bot_language = self.config['bot_language']
         try:
+            logging.info(f"DEBUG: __common_get_chat_response called with model: {self.config['model']}")
             if chat_id not in self.conversations or self.__max_age_reached(chat_id):
                 self.reset_chat_history(chat_id)
 
