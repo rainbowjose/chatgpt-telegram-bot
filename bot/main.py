@@ -62,6 +62,15 @@ def main():
         'tts_voice': os.environ.get('TTS_VOICE', 'alloy'),
         'reasoning_effort': os.environ.get('REASONING_EFFORT', 'none'),
         'verbosity': os.environ.get('VERBOSITY', 'medium'),
+        'enable_web_search': os.environ.get('ENABLE_WEB_SEARCH', 'false').lower() == 'true',
+        'enable_file_search': os.environ.get('ENABLE_FILE_SEARCH', 'false').lower() == 'true',
+        'file_search_vector_store_ids': os.environ.get('FILE_SEARCH_VECTOR_STORE_IDS', ''),
+        'enable_mcp': os.environ.get('ENABLE_MCP', 'false').lower() == 'true',
+        'mcp_server_label': os.environ.get('MCP_SERVER_LABEL', 'default_mcp'),
+        'mcp_server_url': os.environ.get('MCP_SERVER_URL', ''),
+        'mcp_server_description': os.environ.get('MCP_SERVER_DESCRIPTION', ''),
+        'enable_code_interpreter': os.environ.get('ENABLE_CODE_INTERPRETER', 'false').lower() == 'true',
+        'enable_computer_use': os.environ.get('ENABLE_COMPUTER_USE', 'false').lower() == 'true',
     }
 
     if openai_config['enable_functions'] and not functions_available:

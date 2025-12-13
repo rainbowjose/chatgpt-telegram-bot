@@ -281,6 +281,50 @@ class OpenAIHelper:
                 if self.config['verbosity'] != 'medium':
                     text_args['verbosity'] = self.config['verbosity']
 
+                tools_args = {}
+                tools = []
+                include = []
+
+                if self.config.get('enable_web_search'):
+                    tools.append({"type": "web_search"})
+                    include.append("web_search_call.action.sources")
+
+                if self.config.get('enable_file_search'):
+                    vector_store_ids = [id.strip() for id in self.config.get('file_search_vector_store_ids', '').split(',') if id.strip()]
+                    if vector_store_ids:
+                        tools.append({
+                            "type": "file_search",
+                            "file_search": {
+                                "vector_store_ids": vector_store_ids
+                            }
+                        })
+                        include.append("file_search_call.results")
+
+                if self.config.get('enable_code_interpreter'):
+                    tools.append({"type": "code_interpreter"})
+                    include.append("code_interpreter_call.outputs")
+
+                if self.config.get('enable_computer_use'):
+                    tools.append({"type": "computer_use"})
+                    include.append("computer_call_output.output.image_url")
+
+                if self.config.get('enable_mcp'):
+                    mcp_tool = {
+                        "type": "mcp",
+                        "server_label": self.config.get('mcp_server_label'),
+                        "server_url": self.config.get('mcp_server_url'),
+                        "server_description": self.config.get('mcp_server_description', 'MCP Server'),
+                        "require_approval": "never" 
+                    }
+                    if mcp_tool["server_url"]: # Valid URL check ideally
+                         tools.append(mcp_tool)
+
+                if tools:
+                    tools_args['tools'] = tools
+                
+                if include:
+                    tools_args['include'] = include
+
                 stream_request = stream
 
                 if stream_request:
@@ -289,7 +333,8 @@ class OpenAIHelper:
                         input=prompt,
                         reasoning=reasoning_args if reasoning_args else openai.NotGiven(),
                         text=text_args if text_args else openai.NotGiven(),
-                        stream=True
+                        stream=True,
+                        **tools_args
                     )
 
                     class Delta:
@@ -338,7 +383,8 @@ class OpenAIHelper:
                     input=prompt,
                     reasoning=reasoning_args if reasoning_args else openai.NotGiven(),
                     text=text_args if text_args else openai.NotGiven(),
-                    stream=False
+                    stream=False,
+                    **tools_args
                 )
 
                 # Wrap response to match ChatCompletion interface
