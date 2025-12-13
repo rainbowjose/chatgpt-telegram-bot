@@ -281,6 +281,11 @@ class OpenAIHelper:
                 if self.config['verbosity'] != 'medium':
                     text_args['verbosity'] = self.config['verbosity']
 
+                tools_args = {}
+                if self.config['model'] == 'gpt-5.2-pro':
+                    tools_args['tools'] = [{"type": "web_search"}]
+                    tools_args['include'] = ["web_search_call.action.sources"]
+
                 stream_request = stream
 
                 if stream_request:
@@ -289,7 +294,8 @@ class OpenAIHelper:
                         input=prompt,
                         reasoning=reasoning_args if reasoning_args else openai.NotGiven(),
                         text=text_args if text_args else openai.NotGiven(),
-                        stream=True
+                        stream=True,
+                        **tools_args
                     )
 
                     class Delta:
@@ -338,7 +344,8 @@ class OpenAIHelper:
                     input=prompt,
                     reasoning=reasoning_args if reasoning_args else openai.NotGiven(),
                     text=text_args if text_args else openai.NotGiven(),
-                    stream=False
+                    stream=False,
+                    **tools_args
                 )
 
                 # Wrap response to match ChatCompletion interface
