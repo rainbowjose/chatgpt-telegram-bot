@@ -305,7 +305,8 @@ class OpenAIHelper:
                         # Yield content chunk
                         if response.output:
                             content = response.output
-                            if isinstance(content, list):
+                            is_iterable = hasattr(content, '__iter__') and not isinstance(content, (str, bytes, bytearray))
+                            if is_iterable:
                                 text_parts = []
                                 for item in content:
                                     val = None
@@ -361,7 +362,8 @@ class OpenAIHelper:
 
                 # Assuming response.output contains the text
                 content = response.output
-                if isinstance(content, list):
+                is_iterable = hasattr(content, '__iter__') and not isinstance(content, (str, bytes, bytearray))
+                if is_iterable:
                     text_parts = []
                     for item in content:
                         val = None
