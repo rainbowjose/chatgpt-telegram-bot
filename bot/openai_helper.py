@@ -805,10 +805,18 @@ class OpenAIHelper:
             # Initial chunk to satisfy consumers waiting for a role
             yield StreamChunk([StreamChoice(Delta(role='assistant', content=''))])
             
+            reasoning_started = False
             async for event in response_stream:
                 if event.type == 'response.output_text.delta':
                     yield StreamChunk([StreamChoice(Delta(content=event.delta))])
                 
+                elif event.type == 'response.reasoning_text.delta':
+                     yield StreamChunk([StreamChoice(Delta(type='reasoning'))])
+
+                elif event.type == 'response.in_progress' and not reasoning_started:
+                     reasoning_started = True
+                     yield StreamChunk([StreamChoice(Delta(type='reasoning'))])
+
                 elif event.type == 'response.output_item.added':
                      pass
 
@@ -835,7 +843,7 @@ class OpenAIHelper:
                      elif 'file_search' in event.type: status_msg = "📂 Searching files..."
                      elif 'code_interpreter' in event.type: status_msg = "🐍 Running code..."
                      elif 'computer' in event.type: status_msg = "💻 Using computer..."
-                     elif 'function_call' in event.type: pass # Don't show generic function calls as status updates
+                     elif 'function_call' in event.type: pass 
                      
                      if status_msg:
                          yield StreamChunk([StreamChoice(Delta(type='tool_status', content=status_msg))])

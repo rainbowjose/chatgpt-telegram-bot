@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import io
+import time
 
 from uuid import uuid4
 from telegram import BotCommandScopeAllGroupChats, Update, constants
@@ -693,8 +694,16 @@ class ChatGPTTelegramBot:
                 sent_message = None
                 backoff = 0
                 stream_chunk = 0
+                last_typing_time = time.time()
 
                 async for content, tokens in stream_response:
+                    if time.time() - last_typing_time > 4:
+                        await update.effective_message.reply_chat_action(
+                            action=constants.ChatAction.TYPING,
+                            message_thread_id=get_thread_id(update)
+                        )
+                        last_typing_time = time.time()
+
                     if is_direct_result(content):
                         return await handle_direct_result(self.config, update, content)
 
