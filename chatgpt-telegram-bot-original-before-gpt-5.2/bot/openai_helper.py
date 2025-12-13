@@ -27,8 +27,8 @@ GPT_4_VISION_MODELS = ("gpt-4o",)
 GPT_4_128K_MODELS = ("gpt-4-1106-preview", "gpt-4-0125-preview", "gpt-4-turbo-preview", "gpt-4-turbo", "gpt-4-turbo-2024-04-09", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4.5", "gpt-4.5-turbo")
 GPT_4O_MODELS = ("gpt-4o", "gpt-4o-mini", "chatgpt-4o-latest")
 O_MODELS = ("o1", "o1-mini", "o1-preview", "o3", "o3-mini")
-GPT_5_MODELS = ("gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-2025-08-07", "gpt-5-chat-latest", "gpt-5-pro", "gpt-5.1", "gpt-5.1-chat-latest", "gpt-5.2", "gpt-5.2-pro", "gpt-5.2-chat-latest")
-GPT_5_CODEX_MODELS = ("gpt-5-codex", "gpt-5.1-codex", "gpt-5.1-codex-mini", "gpt-5.1-codex-max")
+GPT_5_MODELS = ("gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-2025-08-07", "gpt-5-chat-latest", "gpt-5-pro", "gpt-5.1", "gpt-5.1-chat-latest")
+GPT_5_CODEX_MODELS = ("gpt-5-codex", "gpt-5.1-codex", "gpt-5.1-codex-mini")
 GPT_ALL_MODELS = GPT_3_MODELS + GPT_3_16K_MODELS + GPT_4_MODELS + GPT_4_32K_MODELS + GPT_4_VISION_MODELS + GPT_4_128K_MODELS + GPT_4O_MODELS + O_MODELS + GPT_5_MODELS + GPT_5_CODEX_MODELS
 
 def default_max_tokens(model: str) -> int:
@@ -257,139 +257,7 @@ class OpenAIHelper:
                 'stream': stream
             }
 
-            if self.config['model'] in GPT_5_MODELS or self.config['model'] in GPT_5_CODEX_MODELS:
-                # Use the new Responses API
-                prompt = ""
-                for msg in self.conversations[chat_id]:
-                    role = msg['role']
-                    content = msg['content']
-                    if role == 'function':
-                        continue # Skip function outputs for now in text prompt
-                    prompt += f"{role.capitalize()}: {content}\n\n"
-                prompt += "Assistant: "
-
-                reasoning_args = {}
-                if self.config['reasoning_effort'] != 'none':
-                    reasoning_args['effort'] = self.config['reasoning_effort']
-                
-                text_args = {}
-                if self.config['verbosity'] != 'medium':
-                    text_args['verbosity'] = self.config['verbosity']
-
-                response = await self.client.responses.create(
-                    model=self.config['model'],
-                    input=prompt,
-                    reasoning=reasoning_args if reasoning_args else openai.NotGiven(),
-                    text=text_args if text_args else openai.NotGiven()
-                )
-                
-                if stream:
-                    class Delta:
-                        def __init__(self, role=None, content=None):
-                            self.role = role
-                            self.content = content
-                            self.function_call = None
-
-                    class StreamChoice:
-                        def __init__(self, delta, finish_reason=None):
-                            self.delta = delta
-                            self.finish_reason = finish_reason
-
-                    class StreamChunk:
-                        def __init__(self, choices):
-                            self.choices = choices
-
-                    async def stream_generator():
-                        # Yield initial chunk with role to satisfy __handle_function_call consumption
-                        yield StreamChunk([StreamChoice(Delta(role='assistant', content=''))])
-                        # Yield content chunk
-                        if response.output:
-                            content = response.output
-                            if isinstance(content, list):
-                                text_parts = []
-                                for item in content:
-                                    val = None
-                                    # Try attribute access
-                                    if hasattr(item, 'text'):
-                                        val = item.text
-                                    elif hasattr(item, 'content'):
-                                        val = item.content
-                                    # Try dict access
-                                    elif hasattr(item, 'get'):
-                                        val = item.get('text') or item.get('content')
-                                    
-                                    if val:
-                                        text_parts.append(str(val))
-                                    else:
-                                        # Fallback: regex search in str(item)
-                                        s = str(item)
-                                        import re
-                                        match = re.search(r"text='(.*?)'", s, re.DOTALL)
-                                        if match:
-                                            text_parts.append(match.group(1).replace("\\n", "\n").replace("\\'", "'"))
-                                        else:
-                                            text_parts.append(s)
-                                            logging.warning(f"Failed to extract text from item: {s}, type: {type(item)}")
-
-                                content = "".join(text_parts)
-                            yield StreamChunk([StreamChoice(Delta(content=content))])
-                        # Yield finish chunk
-                        yield StreamChunk([StreamChoice(Delta(), finish_reason='stop')])
-
-                    return stream_generator()
-
-                # Wrap response to match ChatCompletion interface
-                class Message:
-                    def __init__(self, content):
-                        self.content = content
-                        self.function_call = None
-
-                class Choice:
-                    def __init__(self, message):
-                        self.message = message
-
-                class Usage:
-                    def __init__(self):
-                        self.total_tokens = 0
-                        self.prompt_tokens = 0
-                        self.completion_tokens = 0
-
-                class ChatCompletion:
-                    def __init__(self, content):
-                        self.choices = [Choice(Message(content))]
-                        self.usage = Usage()
-
-                # Assuming response.output contains the text
-                content = response.output
-                if isinstance(content, list):
-                    text_parts = []
-                    for item in content:
-                        val = None
-                        # Try attribute access
-                        if hasattr(item, 'text'):
-                            val = item.text
-                        elif hasattr(item, 'content'):
-                            val = item.content
-                        # Try dict access
-                        elif hasattr(item, 'get'):
-                            val = item.get('text') or item.get('content')
-                                    
-                        if val:
-                            text_parts.append(str(val))
-                        else:
-                            # Fallback: regex search in str(item)
-                            s = str(item)
-                            import re
-                            match = re.search(r"text='(.*?)'", s, re.DOTALL)
-                            if match:
-                                text_parts.append(match.group(1).replace("\\n", "\n").replace("\\'", "'"))
-                            else:
-                                text_parts.append(s)
-                                logging.warning(f"Failed to extract text from item: {s}, type: {type(item)}")
-                    content = "".join(text_parts)
-                return ChatCompletion(content)
-
-            # Legacy Chat Completion API for other models
+            if self.config['enable_functions'] and not self.conversations_vision[chat_id]:
                 functions = self.plugin_manager.get_functions_specs()
                 if len(functions) > 0:
                     common_args['functions'] = self.plugin_manager.get_functions_specs()
@@ -776,8 +644,6 @@ class OpenAIHelper:
             else:
                 return 65_536
         if model in GPT_5_MODELS or model in GPT_5_CODEX_MODELS:
-            if "gpt-5.2" in model or "gpt-5.1-codex-max" in model:
-                return 400_000
             return 200_000  # GPT-5 models support 200k context window
         raise NotImplementedError(f"Max tokens for model {model} is not implemented yet.")
 
