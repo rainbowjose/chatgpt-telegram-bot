@@ -729,6 +729,13 @@ class ChatGPTTelegramBot:
                                 pass
                             continue
 
+                        # Start typing again
+                        await update.effective_message.reply_chat_action(
+                            action=constants.ChatAction.TYPING,
+                            message_thread_id=get_thread_id(update)
+                        )
+                        last_typing_time = time.time()
+
                     cutoff = get_stream_cutoff_values(update, content)
                     cutoff += backoff
 
@@ -744,6 +751,12 @@ class ChatGPTTelegramBot:
                             )
                         except:
                             continue
+                        # Start typing again
+                        await update.effective_message.reply_chat_action(
+                            action=constants.ChatAction.TYPING,
+                            message_thread_id=get_thread_id(update)
+                        )
+                        last_typing_time = time.time()
 
                     elif abs(len(content) - len(prev)) > cutoff or tokens != 'not_finished':
                         prev = content
