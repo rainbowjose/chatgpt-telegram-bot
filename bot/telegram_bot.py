@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import io
+import time
 
 from uuid import uuid4
 from telegram import BotCommandScopeAllGroupChats, Update, constants
@@ -526,6 +527,7 @@ class ChatGPTTelegramBot:
                 sent_message = None
                 backoff = 0
                 stream_chunk = 0
+                sent_messages = []  # Track all sent messages for multi-chunk responses
 
                 async for content, tokens in stream_response:
                     if is_direct_result(content):
@@ -535,47 +537,62 @@ class ChatGPTTelegramBot:
                         continue
 
                     stream_chunks = split_into_chunks(content)
-                    if len(stream_chunks) > 1:
-                        content = stream_chunks[-1]
-                        if stream_chunk != len(stream_chunks) - 1:
-                            stream_chunk += 1
+                    num_complete_chunks = len(stream_chunks) - 1
+                    current_chunk_content = stream_chunks[-1]
+                    
+                    # If we have more complete chunks than messages sent, catch up
+                    while stream_chunk < num_complete_chunks:
+                        complete_chunk = stream_chunks[stream_chunk]
+                        if sent_message:
                             try:
                                 await edit_message_with_retry(context, chat_id, str(sent_message.message_id),
-                                                              stream_chunks[-2])
+                                                              complete_chunk)
+                                sent_messages.append(sent_message)
                             except:
                                 pass
+                        else:
                             try:
                                 sent_message = await update.effective_message.reply_text(
                                     message_thread_id=get_thread_id(update),
-                                    text=content if len(content) > 0 else "..."
+                                    reply_to_message_id=get_reply_to_message_id(self.config, update),
+                                    text=complete_chunk,
                                 )
+                                sent_messages.append(sent_message)
                             except:
                                 pass
-                            continue
+                        
+                        stream_chunk += 1
+                        next_chunk_preview = stream_chunks[stream_chunk] if stream_chunk < len(stream_chunks) else "..."
+                        try:
+                            sent_message = await update.effective_message.reply_text(
+                                message_thread_id=get_thread_id(update),
+                                text=next_chunk_preview if len(next_chunk_preview) > 0 else "..."
+                            )
+                            prev = ''
+                        except:
+                            pass
 
-                    cutoff = get_stream_cutoff_values(update, content)
+                    cutoff = get_stream_cutoff_values(update, current_chunk_content)
                     cutoff += backoff
 
-                    if i == 0:
+                    if sent_message is None:
                         try:
-                            if sent_message is not None:
-                                await context.bot.delete_message(chat_id=sent_message.chat_id,
-                                                                 message_id=sent_message.message_id)
                             sent_message = await update.effective_message.reply_text(
                                 message_thread_id=get_thread_id(update),
                                 reply_to_message_id=get_reply_to_message_id(self.config, update),
-                                text=content,
+                                text=current_chunk_content,
                             )
                         except:
                             continue
 
-                    elif abs(len(content) - len(prev)) > cutoff or tokens != 'not_finished':
-                        prev = content
+                    elif abs(len(current_chunk_content) - len(prev)) > cutoff or tokens != 'not_finished':
+                        prev = current_chunk_content
 
                         try:
                             use_markdown = tokens != 'not_finished'
-                            await edit_message_with_retry(context, chat_id, str(sent_message.message_id),
-                                                          text=content, markdown=use_markdown)
+                            if sent_message:
+                                await edit_message_with_retry(context, chat_id, str(sent_message.message_id),
+                                                              text=current_chunk_content, markdown=use_markdown)
 
                         except RetryAfter as e:
                             backoff += 5
@@ -593,7 +610,6 @@ class ChatGPTTelegramBot:
 
                         await asyncio.sleep(0.01)
 
-                    i += 1
                     if tokens != 'not_finished':
                         total_tokens = int(tokens)
 
@@ -693,8 +709,17 @@ class ChatGPTTelegramBot:
                 sent_message = None
                 backoff = 0
                 stream_chunk = 0
+                last_typing_time = time.time()
+                sent_messages = []  # Track all sent messages for multi-chunk responses
 
                 async for content, tokens in stream_response:
+                    if time.time() - last_typing_time > 4:
+                        await update.effective_message.reply_chat_action(
+                            action=constants.ChatAction.TYPING,
+                            message_thread_id=get_thread_id(update)
+                        )
+                        last_typing_time = time.time()
+
                     if is_direct_result(content):
                         return await handle_direct_result(self.config, update, content)
 
@@ -702,47 +727,81 @@ class ChatGPTTelegramBot:
                         continue
 
                     stream_chunks = split_into_chunks(content)
-                    if len(stream_chunks) > 1:
-                        content = stream_chunks[-1]
-                        if stream_chunk != len(stream_chunks) - 1:
-                            stream_chunk += 1
+                    num_complete_chunks = len(stream_chunks) - 1  # All but last chunk are complete
+                    current_chunk_content = stream_chunks[-1]  # The chunk we're currently editing
+                    
+                    # If we have more complete chunks than messages sent, catch up
+                    while stream_chunk < num_complete_chunks:
+                        # Finalize the current message with its complete chunk
+                        complete_chunk = stream_chunks[stream_chunk]
+                        if sent_message:
                             try:
                                 await edit_message_with_retry(context, chat_id, str(sent_message.message_id),
-                                                              stream_chunks[-2])
+                                                              complete_chunk)
+                                sent_messages.append(sent_message)
                             except:
                                 pass
+                        else:
+                            # First message wasn't sent yet, send it now with complete content
                             try:
                                 sent_message = await update.effective_message.reply_text(
                                     message_thread_id=get_thread_id(update),
-                                    text=content if len(content) > 0 else "..."
+                                    reply_to_message_id=get_reply_to_message_id(self.config, update),
+                                    text=complete_chunk,
                                 )
+                                sent_messages.append(sent_message)
                             except:
                                 pass
-                            continue
-
-                    cutoff = get_stream_cutoff_values(update, content)
+                        
+                        stream_chunk += 1
+                        
+                        # Start a new message for the next chunk
+                        next_chunk_preview = stream_chunks[stream_chunk] if stream_chunk < len(stream_chunks) else "..."
+                        try:
+                            sent_message = await update.effective_message.reply_text(
+                                message_thread_id=get_thread_id(update),
+                                text=next_chunk_preview if len(next_chunk_preview) > 0 else "..."
+                            )
+                            prev = ''  # Reset prev for new message
+                        except:
+                            pass
+                        
+                        # Start typing again
+                        await update.effective_message.reply_chat_action(
+                            action=constants.ChatAction.TYPING,
+                            message_thread_id=get_thread_id(update)
+                        )
+                        last_typing_time = time.time()
+                    
+                    # Now handle the current (last) chunk
+                    cutoff = get_stream_cutoff_values(update, current_chunk_content)
                     cutoff += backoff
 
-                    if i == 0:
+                    if sent_message is None:
                         try:
-                            if sent_message is not None:
-                                await context.bot.delete_message(chat_id=sent_message.chat_id,
-                                                                 message_id=sent_message.message_id)
                             sent_message = await update.effective_message.reply_text(
                                 message_thread_id=get_thread_id(update),
                                 reply_to_message_id=get_reply_to_message_id(self.config, update),
-                                text=content,
+                                text=current_chunk_content,
                             )
                         except:
                             continue
+                        # Start typing again
+                        await update.effective_message.reply_chat_action(
+                            action=constants.ChatAction.TYPING,
+                            message_thread_id=get_thread_id(update)
+                        )
+                        last_typing_time = time.time()
 
-                    elif abs(len(content) - len(prev)) > cutoff or tokens != 'not_finished':
-                        prev = content
+                    elif abs(len(current_chunk_content) - len(prev)) > cutoff or tokens != 'not_finished':
+                        prev = current_chunk_content
 
                         try:
                             use_markdown = tokens != 'not_finished'
-                            await edit_message_with_retry(context, chat_id, str(sent_message.message_id),
-                                                          text=content, markdown=use_markdown)
+                            # We can only edit the message if it has been sent
+                            if sent_message:
+                                await edit_message_with_retry(context, chat_id, str(sent_message.message_id),
+                                                              text=current_chunk_content, markdown=use_markdown)
 
                         except RetryAfter as e:
                             backoff += 5
@@ -760,7 +819,6 @@ class ChatGPTTelegramBot:
 
                         await asyncio.sleep(0.01)
 
-                    i += 1
                     if tokens != 'not_finished':
                         total_tokens = int(tokens)
 
