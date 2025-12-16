@@ -60,6 +60,10 @@ class ChatGPTTelegramBot:
         self.usage = {}
         self.last_message = {}
         self.inline_queries_cache = {}
+        # Message aggregation for handling split long messages
+        self.message_buffer = {}  # {chat_id: {'messages': [], 'first_update': Update, 'timestamp': float}}
+        self.message_buffer_locks = {}  # {chat_id: asyncio.Lock}
+        self.message_aggregation_delay = config.get('message_aggregation_delay', 1.5)  # seconds to wait for more parts
 
     async def help(self, update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         """
@@ -659,6 +663,76 @@ class ChatGPTTelegramBot:
 
         await wrap_with_indicator(update, context, _execute, constants.ChatAction.TYPING)
 
+    async def _aggregate_message(self, chat_id: int, user_id: int, message_text: str, 
+                                  update: Update, context: ContextTypes.DEFAULT_TYPE) -> tuple[str, Update] | None:
+        """
+        Aggregates split messages from the same user within a short time window.
+        Returns the combined message and the first update, or None if this message
+        was buffered and will be processed later.
+        """
+        # Create lock for this chat if it doesn't exist
+        if chat_id not in self.message_buffer_locks:
+            self.message_buffer_locks[chat_id] = asyncio.Lock()
+        
+        buffer_key = f"{chat_id}_{user_id}"
+        current_time = time.time()
+        
+        async with self.message_buffer_locks[chat_id]:
+            if buffer_key not in self.message_buffer:
+                # First message - create buffer and wait for more
+                self.message_buffer[buffer_key] = {
+                    'messages': [message_text],
+                    'first_update': update,
+                    'timestamp': current_time,
+                    'processing': False
+                }
+                logging.debug(f'Buffering message from user {user_id} in chat {chat_id}')
+            else:
+                # Add to existing buffer if within time window and not already processing
+                buffer = self.message_buffer[buffer_key]
+                if not buffer['processing'] and current_time - buffer['timestamp'] < self.message_aggregation_delay:
+                    buffer['messages'].append(message_text)
+                    logging.debug(f'Added message part to buffer for user {user_id} in chat {chat_id} '
+                                  f'(now {len(buffer["messages"])} parts)')
+                    return None  # This message was buffered
+                else:
+                    # Time window expired or already processing - start fresh buffer
+                    self.message_buffer[buffer_key] = {
+                        'messages': [message_text],
+                        'first_update': update,
+                        'timestamp': current_time,
+                        'processing': False
+                    }
+        
+        # Wait for potential additional message parts
+        await asyncio.sleep(self.message_aggregation_delay)
+        
+        async with self.message_buffer_locks[chat_id]:
+            if buffer_key not in self.message_buffer:
+                return None  # Buffer was cleared by another process
+                
+            buffer = self.message_buffer[buffer_key]
+            
+            # Check if this is still our buffer (same timestamp)
+            if buffer['timestamp'] != current_time:
+                # Another message started a new buffer while we were waiting
+                return None
+            
+            if buffer['processing']:
+                return None  # Already being processed
+                
+            buffer['processing'] = True
+            combined_message = '\n'.join(buffer['messages'])
+            first_update = buffer['first_update']
+            
+            # Clean up buffer
+            del self.message_buffer[buffer_key]
+            
+            if len(buffer['messages']) > 1:
+                logging.info(f'Aggregated {len(buffer["messages"])} message parts from user {user_id} in chat {chat_id}')
+            
+            return combined_message, first_update
+
     async def prompt(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         React to incoming messages and respond accordingly.
@@ -673,7 +747,18 @@ class ChatGPTTelegramBot:
             f'New message received from user {update.message.from_user.name} (id: {update.message.from_user.id})')
         chat_id = update.effective_chat.id
         user_id = update.message.from_user.id
-        prompt = message_text(update.message)
+        raw_prompt = message_text(update.message)
+        
+        # Aggregate potentially split messages
+        aggregation_result = await self._aggregate_message(chat_id, user_id, raw_prompt, update, context)
+        if aggregation_result is None:
+            # This message was buffered and will be processed with other parts
+            return
+        
+        prompt, first_update = aggregation_result
+        # Use the first update for replying to maintain proper message threading
+        update = first_update
+        
         self.last_message[chat_id] = prompt
 
         if is_group_chat(update):

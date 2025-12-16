@@ -131,6 +131,7 @@ def main():
         'tts_prices': get_env('TTS_PRICES', [0.015, 0.030], parse_float_list),
         'transcription_price': get_env('TRANSCRIPTION_PRICE', 0.006, float),
         'bot_language': get_env('BOT_LANGUAGE', 'en'),
+        'message_aggregation_delay': get_env('MESSAGE_AGGREGATION_DELAY', 1.5, float),  # seconds to wait for split message parts
     }
 
     plugin_config = {
