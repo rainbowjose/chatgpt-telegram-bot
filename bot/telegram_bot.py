@@ -20,7 +20,7 @@ from PIL import Image
 from utils import is_group_chat, get_thread_id, message_text, wrap_with_indicator, split_into_chunks, \
     edit_message_with_retry, get_stream_cutoff_values, is_allowed, get_remaining_budget, is_admin, is_within_budget, \
     get_reply_to_message_id, add_chat_request_to_usage_tracker, error_handler, is_direct_result, handle_direct_result, \
-    cleanup_intermediate_files
+    cleanup_intermediate_files, convert_to_telegram_markdown
 from openai_helper import OpenAIHelper, localized_text
 from usage_tracker import UsageTracker
 
@@ -831,7 +831,9 @@ class ChatGPTTelegramBot:
                         return await handle_direct_result(self.config, update, response)
 
                     # Split into chunks of 4096 characters (Telegram's message limit)
-                    chunks = split_into_chunks(response)
+                    # Convert GPT markdown to Telegram-compatible format
+                    formatted_response = convert_to_telegram_markdown(response)
+                    chunks = split_into_chunks(formatted_response)
 
                     for index, chunk in enumerate(chunks):
                         try:
