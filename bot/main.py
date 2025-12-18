@@ -91,6 +91,7 @@ def main():
         'mcp_server_description': get_env('MCP_SERVER_DESCRIPTION', ''),
         'enable_code_interpreter': get_env('ENABLE_CODE_INTERPRETER', 'false').lower() == 'true',
         'enable_computer_use': get_env('ENABLE_COMPUTER_USE', 'false').lower() == 'true',
+        'tool_choice': get_env('TOOL_CHOICE', 'auto'),  # auto, required, or none
     }
 
     if openai_config['enable_functions'] and not functions_available:

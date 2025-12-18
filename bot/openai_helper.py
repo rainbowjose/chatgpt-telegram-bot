@@ -806,6 +806,10 @@ class OpenAIHelper:
         
         if tools_arg:
             params['tools'] = tools_arg
+            # Add tool_choice to control when tools are used
+            tool_choice = self.config.get('tool_choice', 'auto')
+            if tool_choice in ['auto', 'required', 'none']:
+                params['tool_choice'] = tool_choice
         if include_arg:
             params['include'] = include_arg
         if self.config['reasoning_effort'] != 'none':
